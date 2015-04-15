@@ -1,0 +1,357 @@
+﻿<!DOCTYPE HTML>
+<html>
+<head>
+    <title></title>
+    <script type="text/javascript" src="Scripts/Lib/kinetic-v5.1.0.js"></script>
+    <script type="text/javascript" src="Scripts/Lib/jquery-2.1.1.min.js"></script>
+    <script type="text/javascript" src="Scripts/TrapezeOnline/Settings.js"></script>
+    <script type="text/javascript" src="Scripts/TrapezeOnline/Items.js"></script>
+    <script type="text/javascript" src="Scripts/TrapezeOnline/Calculations.js"></script>
+</head>
+<body>
+    <div id="container">
+    </div>
+    <script type="text/javascript">
+        var stage = new Kinetic.Stage({
+            width: 500,
+            height: 500,
+            container: "container"
+        });
+
+        var hitLayer = new Kinetic.Layer({});
+
+        var hitRect = new Kinetic.Rect({
+            x: 0,
+            y: 0,
+            width: stage.width(),
+            height: stage.height(),
+            fill: "#000",
+            opacity: 0.5
+        });
+
+        hitLayer.add(hitRect);
+        stage.add(hitLayer);
+        stage.draw();
+
+        var character = new Kinetic.Circle({
+            x: stage.width() / 2,
+            y: stage.height() / 2,
+            radius: 5,
+            fill: "#ddd"
+        });
+
+        var layer = new Kinetic.Layer({});
+        layer.add(character);
+        stage.add(layer);
+        stage.batchDraw();
+
+        var gun = new Kinetic.Rect({
+            x: stage.width() / 2,
+            y: stage.height() / 2,
+            offset: {
+                x: -4,
+                y: 10
+            },
+            width: 2,
+            height: 10,
+            fill: "#000"
+        });
+
+        var crosshair;
+
+        var imageObj = new Image();
+        imageObj.onload = function () {
+            if (!imageObj.complete) {
+                imageObj.src = imageObj.src;
+            }
+
+            crosshair = new Kinetic.Image({
+                x: 0,
+                y: 0,
+                offset: {
+                    x: 16,
+                    y: 16
+                },
+                width: 32,
+                height: 32,
+                image: imageObj
+            });
+
+            layer.add(crosshair);
+
+            stage.batchDraw();
+
+        };
+        imageObj.src = "images/crosshair.png";
+
+
+        layer.add(gun);
+        stage.batchDraw();
+
+        function getVector(p1, p2) {
+            try {
+                return {
+                    x: p2.x - p1.x,
+                    y: p2.y - p1.y
+                };
+
+            } catch (e) {
+                throw ("getVector(): " + e);
+            }
+        }
+
+        function getXRelativeAngle(vector) {
+            try {
+                var radians = Math.atan2(vector.y, vector.x),
+            degrees = radians * 180 / Math.PI;
+
+                return degrees;
+
+            } catch (e) {
+                throw ("getXRelativeAngle(): " + e);
+            }
+        }
+
+        function angleRelativeToYAxis(p1, p2) {
+            try {
+                var vector = getVector(p1, p2),
+
+            degrees = getXRelativeAngle(vector);
+
+                degrees += 180;
+
+                degrees %= 360;
+
+                return degrees;
+
+            } catch (e) {
+                throw ("angleRelativeToXAxis(): " + e);
+
+            }
+        }
+
+        function getAngle(coordinate) {
+            try {
+                //Vector of line from p1 to p2
+
+                var p1 = {
+                    x: coordinate.x,
+                    y: coordinate.y - 1
+                },
+                    p2 = {
+                        x: coordinate.x,
+                        y: coordinate.y
+                    },
+                    p3 = {
+                        x: stage.width() / 2,
+                        y: stage.height() / 2
+                    };
+
+                var vector1 = getVector(p1, p2),
+                    vector2 = getVector(p2, p3),
+
+                    degreesVector1 = getXRelativeAngle(vector1),
+                    degreesVector2 = getXRelativeAngle(vector2);
+
+                if (degreesVector1 < 0) {
+                    degreesVector1 = 360 + degreesVector1;
+                }
+
+                if (degreesVector2 < 0) {
+                    degreesVector2 = 360 + degreesVector2;
+                }
+
+                var yAxisDegreesVector1 = (degreesVector1 + 90) % 360;
+                var yAxisDegreesVector2 = (degreesVector2 + 90) % 360;
+
+                var degreesRelative = yAxisDegreesVector1 - yAxisDegreesVector2;
+
+                if (degreesRelative < 0) {
+                    degreesRelative = 360 + degreesRelative;
+                }
+
+                degreesRelative = Math.abs(360 - ((degreesRelative + 180) % 360));
+
+                return degreesRelative;
+
+            } catch (e) {
+                alert("TrapezeOnline.Calculations.GetAngleToCentre(): " + e);
+            }
+        }
+
+        function reduceDistanceAccuracy(gun, originCoordinate, destinationCoordinate) {
+            try {
+                var distance = Math.sqrt(Math.pow(Math.abs(originCoordinate.x - destinationCoordinate.x), 2) + Math.pow(Math.abs(originCoordinate.y - destinationCoordinate.y), 2)),
+
+                //Make it more difficult to attack at distance by reducing accuracy randomly at an increasing rate as distance is embiggend
+                    variance = {
+                        x: Math.pow(distance, 2) * (((Math.random() * 0.0005 * gun.Accuracy) + (Math.random() * 0.0005 * gun.Ammunition.Accuracy)) * (Math.random() > 0.5 ? 1 : -1)),
+                        y: Math.pow(distance, 2) * (((Math.random() * 0.0005 * gun.Accuracy) + (Math.random() * 0.0005 * gun.Ammunition.Accuracy)) * (Math.random() > 0.5 ? 1 : -1))
+                    };
+
+                return {
+                    x: destinationCoordinate.x + variance.x,
+                    y: destinationCoordinate.y + variance.y
+                };
+
+            } catch (e) {
+                throw "reduceDistanceAccuracy(): " + e;
+            }
+        }
+
+        function calculatePositionChange(originCoordinate, destinationCoordinate) {
+            try {
+                var angle, dx, dy;
+
+                angle = Math.atan2((originCoordinate.x - destinationCoordinate.x), (originCoordinate.y - destinationCoordinate.y));
+
+                //add 90degrees
+                angle += (Math.PI / 2);
+                //Subtract from 360
+                angle = (2 * Math.PI) - angle;
+
+                return {
+                    x: dx = Math.cos(angle),
+                    y: Math.sin(angle)
+                };
+
+            } catch (e) {
+                throw "calculatePositionChange(): " + e;
+            }
+        }
+
+        function createProjectile(position) {
+            try {
+                var projectile = new Kinetic.Rect({
+                    x: position.x,
+                    y: position.y,
+                    offset: {
+                        x: -4,
+                        y: 10
+                    },
+                    width: 1,
+                    height: 2,
+                    fill: "#000"
+                });
+
+                layer.add(projectile);
+
+                return projectile;
+
+            } catch (e) {
+                throw "createProjectile(): " + e;
+            }
+        }
+
+        function setProjectileOrientation(projectile, originPosition, destinationPosition) {
+            try {
+                var direction = getAngle(destinationPosition);
+                projectile.rotation(direction - 180);
+
+            } catch (e) {
+                throw "setProjectileOrientation(): " + e;
+            }
+        }
+
+        stage.off("mouseover").on("mouseover", function () {
+            document.body.style.cursor = "none";
+        });
+
+        stage.off("mouseout").on("mouseout", function () {
+            document.body.style.cursor = "default";
+        });
+
+        $(document).off("mousemove").on("mousemove", function () {
+            var mousePos = stage.getPointerPosition();
+
+            if (!mousePos) { return; }
+
+            var direction = getAngle(mousePos);
+
+            gun.rotation(direction - 180);
+
+            stage.batchDraw();
+        });
+
+        function fireProjectile(targetCoordinate, gun) {
+            try {
+                var period = 1000,
+                totalTime = 0,
+                velocity = gun.Ammunition.Velocity,
+                projectile, positionChange, animation;
+
+                //Create the kinetic object and add to the layer
+                projectile = createProjectile({
+                    x: stage.width() / 2,
+                    y: stage.height() / 2
+                });
+
+                //Reduce the accuracy
+                targetCoordinate = reduceDistanceAccuracy(gun, projectile.position(), targetCoordinate);
+
+                //Workout the position change
+                positionChange = calculatePositionChange(projectile.position(), targetCoordinate);
+
+                //Set the projectile orientation
+                setProjectileOrientation(projectile, projectile.position(), targetCoordinate);
+
+
+                animation = new Kinetic.Animation(function (frame) {
+                    //Get the amount of time taken for frame
+                    var frameTime = frame.time - totalTime,
+                    position = projectile.position();
+                    totalTime = frame.time;
+
+                    //Cleanup once projectile is out of view
+                    if (position.x < 0 || position.x > stage.width() || position.y < 0 || position.y > stage.height()) {
+                        projectile.destroy();
+                        animation.stop();
+                    }
+
+                    //set the position
+                    projectile.position({
+                        x: position.x + (positionChange.x * (velocity / 100)),
+                        y: position.y + (positionChange.y * (velocity / 100))
+                    });
+
+                    velocity *= gun.Ammunition.Friction;
+
+                }, layer);
+
+                animation.start();
+
+            } catch (e) {
+                throw "fireProjectile(): " + e;
+            }
+        }
+
+        function fireRound(targetCoordinate, gun) {
+            try {
+                //Check ammo level
+                gun.MagazineLevel -= 1;
+                if (gun.MagazineLevel < 1) {
+                    if (gun.MagazineLevel === 0) {
+                        TrapezeOnline.Items.Reload(gun);
+                    }
+                    return;
+                }
+
+                for (i = 0, len = gun.Ammunition.Projectiles; i < len; i += 1) {
+                    fireProjectile(targetCoordinate, gun);
+                }                
+
+            } catch (e) {
+                throw "fireRound(): " + e;
+            }
+        }
+
+        $(document).off("mousedown").on("mousedown", function () {
+            var mousePos = stage.getPointerPosition(), i, len;
+            if (!mousePos) { return; }
+            
+            fireRound(mousePos, TrapezeOnline.Items.Pistol_22);
+        });
+
+    </script>
+</body>
+</html>
